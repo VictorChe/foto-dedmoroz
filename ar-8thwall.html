@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Фото с Дедом Морозом — AR (8th Wall)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      touch-action: none;
+    }
+    #camerafeed { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+
+    .top-bar {
+      position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0;
+      padding: 12px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 20;
+      background: linear-gradient(rgba(0,0,0,0.65), transparent);
+    }
+    .top-title { font-size: 16px; font-weight: 600; }
+    .btn-icon {
+      padding: 8px 14px; border-radius: 999px; border: none;
+      background: rgba(255,255,255,0.18); color: #fff; font-size: 14px; cursor: pointer;
+    }
+    .bottom-bar {
+      position: fixed; bottom: env(safe-area-inset-bottom, 0px); left: 0; right: 0;
+      padding: 16px; display: flex; justify-content: center; gap: 12px;
+      z-index: 20; background: linear-gradient(transparent, rgba(0,0,0,0.75));
+    }
+    .btn {
+      padding: 14px 22px; border-radius: 999px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-red { background: linear-gradient(135deg, #c41e3a, #f97316); color: #fff; }
+    .btn-dim { background: rgba(255,255,255,0.18); color: #fff; }
+
+    #hint {
+      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 56px);
+      left: 50%; transform: translateX(-50%);
+      padding: 8px 16px; background: rgba(0,0,0,0.75);
+      border-radius: 999px; font-size: 13px;
+      text-align: center; max-width: 90%; z-index: 20;
+      white-space: nowrap; transition: opacity 0.4s;
+    }
+    #loading {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(5, 8, 20, 0.96);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+    }
+    #loading.gone { display: none; }
+    .spinner {
+      width: 46px; height: 46px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: #7c3aed; border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { font-size: 14px; opacity: .8; text-align: center; max-width: 280px; }
+    #startBtn {
+      display: none; padding: 16px 32px; border-radius: 999px; border: none;
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      color: #fff; font-size: 18px; font-weight: 700; cursor: pointer;
+    }
+    #fallback {
+      position: fixed; inset: 0; z-index: 60;
+      background: radial-gradient(circle at top, #1f2937 0, #020617 55%, #000 100%);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; gap: 14px; text-align: center;
+    }
+    #fallback.show { display: flex; }
+    #fallback h2 { font-size: 20px; }
+    #fallback p { font-size: 13px; opacity: .85; max-width: 320px; line-height: 1.55; }
+    #fallback small { font-size: 11px; opacity: .55; }
+    #result {
+      position: fixed; inset: 0; z-index: 70; background: #000;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    #result.show { display: flex; }
+    #resultImg { max-width: 100%; max-height: 80vh; object-fit: contain; }
+    #resultActions { margin-top: 16px; display: flex; gap: 12px; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="xr.js" data-preload-chunks="slam"></script>
+</head>
+<body>
+  <canvas id="camerafeed"></canvas>
+
+  <div class="top-bar">
+    <button class="btn-icon" id="btnBack">← Режимы</button>
+    <div class="top-title">AR (8th Wall)</div>
+    <button class="btn-icon" id="btnReset">Сброс</button>
+  </div>
+  <div id="hint" style="display:none"></div>
+  <div class="bottom-bar">
+    <button class="btn btn-red" id="btnCapture" disabled>Сфотографировать</button>
+  </div>
+
+  <div id="loading">
+    <div class="spinner" id="spinner"></div>
+    <p id="loadingText">Загружаем AR‑движок…</p>
+    <button id="startBtn" onclick="onUserStartAR()">Запустить AR</button>
+  </div>
+
+  <div id="fallback">
+    <h2>AR‑режим (8th Wall) недоступен</h2>
+    <p id="fallbackReason">Ваш браузер или устройство не поддерживают AR.</p>
+    <button class="btn btn-dim" onclick="location.href='simple.html'">Простой режим</button>
+    <button class="btn btn-dim" onclick="location.href='index.html'" style="opacity:.65">← На главную</button>
+    <small id="fallbackDetail"></small>
+  </div>
+
+  <div id="result">
+    <img id="resultImg" alt="Фото">
+    <div id="resultActions">
+      <button class="btn btn-dim" id="btnAgain">Снова</button>
+      <button class="btn btn-red" id="btnDownload">Скачать</button>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var loadingEl      = document.getElementById('loading');
+    var spinnerEl      = document.getElementById('spinner');
+    var loadingTextEl  = document.getElementById('loadingText');
+    var startBtnEl     = document.getElementById('startBtn');
+    var fallbackEl     = document.getElementById('fallback');
+    var fallbackReason = document.getElementById('fallbackReason');
+    var fallbackDetail = document.getElementById('fallbackDetail');
+    var hintEl         = document.getElementById('hint');
+    var btnCapture     = document.getElementById('btnCapture');
+    var btnBack        = document.getElementById('btnBack');
+    var btnReset       = document.getElementById('btnReset');
+    var resultEl       = document.getElementById('result');
+    var resultImg      = document.getElementById('resultImg');
+    var btnAgain       = document.getElementById('btnAgain');
+    var btnDownload    = document.getElementById('btnDownload');
+
+    var S = { santa: null, reticle: null, placed: false, captureNext: false, lastPhoto: null, rotOffset: 0 };
+
+    function showFallback(reason, detail) {
+      loadingEl.classList.add('gone');
+      if (reason) fallbackReason.textContent = reason;
+      if (detail) fallbackDetail.textContent = detail;
+      fallbackEl.classList.add('show');
+    }
+
+    function setHint(text, autohideMs) {
+      hintEl.style.display = '';
+      hintEl.style.opacity = '1';
+      hintEl.textContent = text;
+      if (autohideMs) {
+        setTimeout(function() {
+          hintEl.style.opacity = '0';
+          setTimeout(function() { hintEl.style.display = 'none'; }, 400);
+        }, autohideMs);
+      }
+    }
+
+    async function requestIOSMotionPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          var perm = await DeviceOrientationEvent.requestPermission();
+          if (perm !== 'granted') {
+            showFallback('Для AR нужен доступ к датчикам движения.', 'Разрешите доступ и попробуйте снова.');
+            return false;
+          }
+        } catch (e) {
+          showFallback('Не удалось запросить доступ к датчикам.', String(e));
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function santaModule(state) {
+      var SANTA_H = 2.5;
+      var SANTA_W = SANTA_H * (436 / 697);
+      var raycaster = new THREE.Raycaster();
+      var groundPlane = null;
+      var t0x = 0, t0y = 0, startRotOffset = 0, startScale = 1, pinchStart = 0;
+
+      if (THREE.ColorManagement) THREE.ColorManagement.enabled = false;
+
+      function setupScene(scene, camera) {
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.2));
+        groundPlane = new THREE.Mesh(
+          new THREE.PlaneGeometry(200, 200),
+          new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+        );
+        groundPlane.rotation.x = -Math.PI / 2;
+        scene.add(groundPlane);
+        var rMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+        state.reticle = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.11, 36), rMat);
+        state.reticle.rotation.x = -Math.PI / 2;
+        state.reticle.position.set(0, 0.01, -1.5);
+        scene.add(state.reticle);
+        new THREE.TextureLoader().load('santa.png', function(tex) {
+          tex.encoding = THREE.sRGBEncoding;
+          var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide });
+          state.santa = new THREE.Mesh(new THREE.PlaneGeometry(SANTA_W, SANTA_H), mat);
+          state.santa.visible = false;
+          scene.add(state.santa);
+        });
+        camera.position.set(0, 2, 0);
+      }
+
+      function updateReticle(camera) {
+        if (state.placed || !state.reticle || !groundPlane) return;
+        var dir = new THREE.Vector3(0, -0.35, -1).normalize();
+        dir.applyQuaternion(camera.quaternion);
+        raycaster.set(camera.position, dir);
+        var hits = raycaster.intersectObject(groundPlane);
+        if (hits.length > 0) {
+          state.reticle.position.set(hits[0].point.x, 0.01, hits[0].point.z);
+          state.reticle.visible = true;
+        }
+      }
+
+      function placeSanta() {
+        if (!state.santa || !state.reticle) return;
+        state.santa.position.set(state.reticle.position.x, SANTA_H / 2, state.reticle.position.z);
+        state.rotOffset = 0;
+        state.santa.scale.set(1, 1, 1);
+        state.santa.visible = true;
+        state.reticle.visible = false;
+        state.placed = true;
+        btnCapture.disabled = false;
+        try {
+          var cam = XR8.Threejs.xrScene().camera;
+          var dx = cam.position.x - state.santa.position.x;
+          var dz = cam.position.z - state.santa.position.z;
+          state.santa.rotation.y = Math.atan2(dx, dz);
+        } catch (e) {}
+        setHint('Ребёнок встаёт рядом, вы фотографируете. 2 пальца — масштаб', 4000);
+      }
+
+      santaModule._reset = function() {
+        if (!state.santa) return;
+        state.placed = false;
+        state.rotOffset = 0;
+        state.santa.visible = false;
+        if (state.reticle) state.reticle.visible = false;
+        btnCapture.disabled = true;
+        setHint('Направьте камеру на пол и нажмите, чтобы поставить заново');
+      };
+
+      function onTouchStart(e) {
+        if (e.touches.length === 1) {
+          t0x = e.touches[0].clientX; t0y = e.touches[0].clientY;
+          startRotOffset = state.rotOffset; pinchStart = 0;
+        } else if (e.touches.length >= 2) {
+          pinchStart = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+          if (state.santa) startScale = state.santa.scale.x;
+        }
+      }
+      function onTouchMove(e) {
+        e.preventDefault();
+        if (e.touches.length === 1 && state.placed && state.santa) {
+          state.rotOffset = startRotOffset + (e.touches[0].clientX - t0x) * 0.009;
+        } else if (e.touches.length >= 2 && state.placed && state.santa && pinchStart > 0) {
+          var dist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+          var s = Math.max(0.3, Math.min(5, startScale * (dist / pinchStart)));
+          state.santa.scale.set(s, s, s);
+        }
+      }
+      function onTouchEnd(e) {
+        if (!state.placed && e.changedTouches.length === 1) {
+          if (Math.abs(e.changedTouches[0].clientX - t0x) < 14 && Math.abs(e.changedTouches[0].clientY - t0y) < 14) placeSanta();
+        }
+      }
+
+      return {
+        name: 'santa-ar',
+        onStart: function(ctx) {
+          var d = XR8.Threejs.xrScene();
+          setupScene(d.scene, d.camera);
+          loadingEl.classList.add('gone');
+          setHint('Направьте камеру на пол и нажмите, чтобы поставить Деда Мороза');
+          ctx.canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+          ctx.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+          ctx.canvas.addEventListener('touchend', onTouchEnd, { passive: true });
+          XR8.XrController.updateCameraProjectionMatrix({ origin: d.camera.position, facing: d.camera.quaternion });
+        },
+        onRender: function() {
+          var cam = XR8.Threejs.xrScene().camera;
+          updateReticle(cam);
+          if (state.placed && state.santa) {
+            var dx = cam.position.x - state.santa.position.x;
+            var dz = cam.position.z - state.santa.position.z;
+            state.santa.rotation.y = Math.atan2(dx, dz) + state.rotOffset;
+          }
+          if (S.captureNext) {
+            S.captureNext = false;
+            try {
+              var dataUrl = document.getElementById('camerafeed').toDataURL('image/jpeg', 0.92);
+              S.lastPhoto = dataUrl;
+              resultImg.src = dataUrl;
+              resultEl.classList.add('show');
+            } catch (err) { alert('Не удалось захватить кадр.'); }
+          }
+        },
+      };
+    }
+
+    function fullWindowCanvasModule() {
+      function resize() {
+        var canvas = document.getElementById('camerafeed');
+        var w = window.innerWidth, h = window.innerHeight;
+        canvas.width = w; canvas.height = h;
+        canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+        canvas.style.position = 'fixed'; canvas.style.top = '0'; canvas.style.left = '0';
+        try {
+          var d = XR8.Threejs.xrScene();
+          d.renderer.setSize(w, h);
+          d.camera.aspect = w / h;
+          d.camera.updateProjectionMatrix();
+        } catch (e) {}
+      }
+      return {
+        name: 'full-window-canvas',
+        onStart: function() {
+          resize();
+          window.addEventListener('resize', resize);
+          window.addEventListener('orientationchange', function() { setTimeout(resize, 200); });
+        },
+      };
+    }
+
+    function runXR8() {
+      var canvas = document.getElementById('camerafeed');
+      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+      try {
+        XR8.addCameraPipelineModules([
+          fullWindowCanvasModule(),
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          santaModule(S),
+        ]);
+        XR8.run({ canvas: canvas });
+      } catch (err) {
+        showFallback('Не удалось запустить AR.', err && err.message ? err.message : String(err));
+      }
+    }
+
+    window.onUserStartAR = async function() {
+      startBtnEl.disabled = true; startBtnEl.textContent = '…';
+      var ok = await requestIOSMotionPermission();
+      if (!ok) return;
+      runXR8();
+    };
+
+    var xrReady = false;
+    function onXRLoaded() {
+      if (xrReady) return;
+      xrReady = true;
+      spinnerEl.style.display = 'none';
+      loadingTextEl.textContent = 'AR‑движок готов!';
+      startBtnEl.style.display = 'block';
+    }
+
+    function initWait() {
+      var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (location.protocol !== 'https:' && !isLocal) {
+        showFallback('AR требует HTTPS.', 'Откройте сайт по https://...');
+        return;
+      }
+      try {
+        var tc = document.createElement('canvas');
+        if (!tc.getContext('webgl') && !tc.getContext('experimental-webgl')) {
+          showFallback('Нет WebGL.'); return;
+        }
+      } catch (e) { showFallback('Ошибка WebGL.', String(e)); return; }
+
+      if (window.XR8) onXRLoaded();
+      else {
+        window.addEventListener('xrloaded', onXRLoaded);
+        setTimeout(function() { if (!xrReady) showFallback('AR‑движок не загрузился.', 'Проверьте интернет.'); }, 20000);
+      }
+    }
+
+    btnBack.addEventListener('click', function() { try { XR8.stop(); } catch (e) {} location.href = 'index.html'; });
+    btnReset.addEventListener('click', function() { try { XR8.XrController.recenter(); } catch (e) {} if (typeof santaModule._reset === 'function') santaModule._reset(); });
+    btnCapture.addEventListener('click', function() { S.captureNext = true; });
+    btnAgain.addEventListener('click', function() { resultEl.classList.remove('show'); });
+    btnDownload.addEventListener('click', function() {
+      if (!S.lastPhoto) return;
+      var a = document.createElement('a'); a.href = S.lastPhoto;
+      a.download = 'foto-dedmoroz-8thwall-' + Date.now() + '.jpg'; a.click();
+    });
+
+    window.addEventListener('load', initWait);
+  })();
+  </script>
+</body>
+</html>

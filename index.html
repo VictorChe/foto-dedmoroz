@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Фото с Дедом Морозом</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: radial-gradient(circle at top, #3a4fff 0, #1a1a2e 45%, #050814 100%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: rgba(5, 8, 20, 0.9);
+      border-radius: 24px;
+      padding: 24px 20px 20px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(14px);
+    }
+    .title { font-size: 22px; font-weight: 700; margin-bottom: 8px; text-align: center; }
+    .subtitle { font-size: 14px; opacity: 0.85; text-align: center; margin-bottom: 20px; }
+    .modes { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+    .mode-btn {
+      border: none; border-radius: 18px; padding: 14px 16px;
+      display: flex; flex-direction: column; align-items: flex-start;
+      cursor: pointer; width: 100%; text-align: left;
+      text-decoration: none; color: #fff;
+      transition: transform 0.08s ease-out, box-shadow 0.12s ease-out;
+    }
+    a.mode-btn { display: flex; }
+    .mode-btn:active { transform: translateY(1px) scale(0.99); box-shadow: none; }
+    .mode-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .mode-desc { font-size: 13px; opacity: 0.9; }
+    .mode-platforms { font-size: 11px; opacity: 0.65; margin-top: 5px; }
+    .mode-simple {
+      background: linear-gradient(135deg, #1f2937, #111827);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.7);
+    }
+    .mode-webxr {
+      background: linear-gradient(135deg, #c41e3a, #f97316);
+      box-shadow: 0 12px 36px rgba(220, 38, 38, 0.75);
+    }
+    .mode-8thwall {
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      box-shadow: 0 12px 36px rgba(124, 58, 237, 0.6);
+    }
+    .mode-quicklook {
+      background: linear-gradient(135deg, #0ea5e9, #06b6d4);
+      box-shadow: 0 12px 36px rgba(14, 165, 233, 0.6);
+    }
+    .badge {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+    .footer-text { font-size: 11px; opacity: 0.7; text-align: center; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header>
+      <h1 class="title">Фото с Дедом Морозом</h1>
+      <p class="subtitle">Выберите, как хотите сделать фото с Дедом Морозом и Снегурочкой.</p>
+    </header>
+    <section class="modes">
+
+      <button type="button" class="mode-btn mode-simple" onclick="location.href='simple.html'">
+        <div class="mode-title">
+          Простой режим
+        </div>
+        <div class="mode-desc">
+          Камера + картинка Деда Мороза поверх. Двигайте и масштабируйте пальцем.
+        </div>
+        <div class="mode-platforms">iPhone, Android, любой браузер</div>
+      </button>
+
+      <button type="button" class="mode-btn mode-webxr" onclick="location.href='ar.html'">
+        <div class="mode-title">
+          AR с окклюзией (WebXR)
+          <span class="badge">Лучший AR</span>
+        </div>
+        <div class="mode-desc">
+          Стенд стоит в комнате. Ребёнок может встать перед ним и перекрыть его — как в реальности.
+        </div>
+        <div class="mode-platforms">Android — Chrome</div>
+      </button>
+
+      <button type="button" class="mode-btn mode-8thwall" onclick="location.href='ar-8thwall.html'">
+        <div class="mode-title">
+          AR (8th Wall)
+        </div>
+        <div class="mode-desc">
+          Стенд в комнате через 8th Wall. Без окклюзии, но работает на iPhone.
+        </div>
+        <div class="mode-platforms">iPhone — Safari, Android — Chrome</div>
+      </button>
+
+      <a rel="ar" href="santa.usdz" class="mode-btn mode-quicklook" id="quicklook-btn" style="display:none">
+        <div class="mode-title">
+          AR Quick Look
+          <span class="badge">iPhone</span>
+        </div>
+        <div class="mode-desc">
+          Нативный AR от Apple: стенд появляется в комнате через встроенный просмотрщик iOS. С окклюзией на устройствах с LiDAR.
+        </div>
+        <div class="mode-platforms">iPhone / iPad — Safari (iOS 12+)</div>
+      </a>
+
+    </section>
+    <p class="footer-text">
+      В любой момент из режимов можно вернуться сюда и выбрать другой вариант.
+    </p>
+  </main>
+
+  <script>
+    (function() {
+      var ua = navigator.userAgent || '';
+      var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var a = document.createElement('a');
+      var supportsAR = a.relList && a.relList.supports && a.relList.supports('ar');
+      if (isIOS || supportsAR) {
+        document.getElementById('quicklook-btn').style.display = '';
+      }
+    })();
+  </script>
+</body>
+</html>

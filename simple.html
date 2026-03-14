@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Фото с Дедом Морозом — простой режим</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #fff;
+      min-height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    #overlay {
+      position: absolute;
+      pointer-events: auto;
+      z-index: 1;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 280px;
+      height: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    #canvas {
+      display: none;
+    }
+    .controls {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      z-index: 10;
+      background: linear-gradient(transparent, rgba(0,0,0,0.6));
+    }
+    .btn {
+      padding: 14px 24px;
+      border: none;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn:active {
+      transform: scale(0.96);
+    }
+    #btnSwitch {
+      background: rgba(255,255,255,0.25);
+      color: #fff;
+    }
+    #btnCapture {
+      background: #c41e3a;
+      color: #fff;
+    }
+    .hint {
+      position: fixed;
+      top: max(48px, env(safe-area-inset-top) + 36px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      opacity: 0.9;
+      z-index: 5;
+      text-align: center;
+      padding: 0 16px;
+    }
+    #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.9);
+      padding: 24px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 90%;
+      z-index: 20;
+      display: none;
+    }
+    #error.show { display: block; }
+    #resultScreen {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 15;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #resultScreen.show { display: flex; }
+    #resultImg {
+      max-width: 100%;
+      max-height: 80vh;
+      object-fit: contain;
+    }
+    #resultActions {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+    }
+    #btnCloseResult {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    .top-bar {
+      position: fixed;
+      top: env(safe-area-inset-top);
+      left: 0;
+      right: 0;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 8;
+      background: linear-gradient(rgba(0,0,0,0.7), transparent);
+    }
+    .top-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .top-back {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <video id="video" autoplay playsinline muted></video>
+    <img id="overlay" src="santa.png" alt="Дед Мороз и Снегурочка" draggable="false">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div class="top-bar">
+    <button type="button" class="top-back" onclick="window.location.href='index.html'">← Режимы</button>
+    <div class="top-title">Простой режим</div>
+  </div>
+  <p class="hint">Двигайте и масштабируйте персонажей пальцем</p>
+  <div class="controls">
+    <button type="button" class="btn" id="btnSwitch">Камера</button>
+    <button type="button" class="btn" id="btnCapture">Сфотографировать</button>
+  </div>
+  <div id="error"></div>
+  <div id="resultScreen">
+    <img id="resultImg" alt="Фото">
+    <div id="resultActions">
+      <button type="button" class="btn" id="btnCloseResult">Сделать ещё</button>
+      <button type="button" class="btn" id="btnDownloadResult">Скачать</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const video = document.getElementById('video');
+      const overlay = document.getElementById('overlay');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const btnSwitch = document.getElementById('btnSwitch');
+      const btnCapture = document.getElementById('btnCapture');
+      const errorEl = document.getElementById('error');
+      const resultScreen = document.getElementById('resultScreen');
+      const resultImg = document.getElementById('resultImg');
+      const btnCloseResult = document.getElementById('btnCloseResult');
+      const btnDownloadResult = document.getElementById('btnDownloadResult');
+
+      const OVERLAY_BASE_W = 436;
+      const OVERLAY_BASE_H = 697;
+
+      let stream = null;
+      let useFront = false;
+      let currentDeviceId = null;
+
+      let overlayCenterX = 0.5;
+      let overlayCenterY = 0.5;
+      let overlayScale = 0.4;
+
+      let lastPhotoDataUrl = null;
+
+      let touchStartCenter = null;
+      let touchStartOverlayCenterX = null;
+      let touchStartOverlayCenterY = null;
+      let touchStartOverlayScale = null;
+      let initialPinchDistance = null;
+
+      const container = document.getElementById('container');
+
+      function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.add('show');
+      }
+
+      function hideError() {
+        errorEl.classList.remove('show');
+      }
+
+      function applyOverlayStyle() {
+        const rect = container.getBoundingClientRect();
+        const cx = rect.width * overlayCenterX;
+        const cy = rect.height * overlayCenterY;
+        const w = rect.width * overlayScale;
+        const h = (OVERLAY_BASE_H / OVERLAY_BASE_W) * w;
+        overlay.style.left = (cx - w / 2) + 'px';
+        overlay.style.top = (cy - h / 2) + 'px';
+        overlay.style.width = w + 'px';
+        overlay.style.transform = 'translate(0, 0)';
+      }
+
+      function getTouchCenter(touches) {
+        const t = Array.from(touches);
+        return {
+          x: t.reduce((s, e) => s + e.clientX, 0) / t.length,
+          y: t.reduce((s, e) => s + e.clientY, 0) / t.length
+        };
+      }
+
+      function getPinchDistance(touches) {
+        const t = Array.from(touches);
+        if (t.length < 2) return 0;
+        return Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+      }
+
+      overlay.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+          touchStartCenter = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          touchStartOverlayCenterX = overlayCenterX;
+          touchStartOverlayCenterY = overlayCenterY;
+          initialPinchDistance = null;
+        } else if (e.touches.length === 2) {
+          touchStartCenter = getTouchCenter(e.touches);
+          initialPinchDistance = getPinchDistance(e.touches);
+          touchStartOverlayCenterX = overlayCenterX;
+          touchStartOverlayCenterY = overlayCenterY;
+          touchStartOverlayScale = overlayScale;
+        }
+      }, { passive: true });
+
+      overlay.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        if (e.touches.length === 1 && touchStartCenter) {
+          const dx = (e.touches[0].clientX - touchStartCenter.x) / rect.width;
+          const dy = (e.touches[0].clientY - touchStartCenter.y) / rect.height;
+          overlayCenterX = Math.max(0.1, Math.min(0.9, touchStartOverlayCenterX + dx));
+          overlayCenterY = Math.max(0.1, Math.min(0.9, touchStartOverlayCenterY + dy));
+          touchStartCenter = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          touchStartOverlayCenterX = overlayCenterX;
+          touchStartOverlayCenterY = overlayCenterY;
+        } else if (e.touches.length === 2 && initialPinchDistance != null && initialPinchDistance > 0) {
+          const dist = getPinchDistance(e.touches);
+          const k = dist / initialPinchDistance;
+          overlayScale = Math.max(0.15, Math.min(1, touchStartOverlayScale * k));
+        }
+        applyOverlayStyle();
+      }, { passive: false });
+
+      overlay.addEventListener('touchend', function(e) {
+        if (e.touches.length === 0) {
+          touchStartCenter = null;
+          initialPinchDistance = null;
+        }
+      }, { passive: true });
+
+      overlay.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        touchStartCenter = { x: e.clientX, y: e.clientY };
+        touchStartOverlayCenterX = overlayCenterX;
+        touchStartOverlayCenterY = overlayCenterY;
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (touchStartCenter == null) return;
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const dx = (e.clientX - touchStartCenter.x) / rect.width;
+        const dy = (e.clientY - touchStartCenter.y) / rect.height;
+        overlayCenterX = Math.max(0.1, Math.min(0.9, touchStartOverlayCenterX + dx));
+        overlayCenterY = Math.max(0.1, Math.min(0.9, touchStartOverlayCenterY + dy));
+        touchStartCenter = { x: e.clientX, y: e.clientY };
+        touchStartOverlayCenterX = overlayCenterX;
+        touchStartOverlayCenterY = overlayCenterY;
+        applyOverlayStyle();
+      });
+
+      document.addEventListener('mouseup', function() {
+        touchStartCenter = null;
+      });
+
+      function stopStream() {
+        if (stream) {
+          stream.getTracks().forEach(function(t) { t.stop(); });
+          stream = null;
+        }
+      }
+
+      function updateMirror(front) {
+        video.style.transform = front ? 'scaleX(-1)' : 'none';
+      }
+
+      function startCamera(front) {
+        stopStream();
+        const constraints = {
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: front ? 'user' : 'environment'
+          },
+          audio: false
+        };
+        if (currentDeviceId) {
+          constraints.video.deviceId = { exact: currentDeviceId };
+          delete constraints.video.facingMode;
+        }
+        navigator.mediaDevices.getUserMedia(constraints)
+          .then(function(s) {
+            stream = s;
+            video.srcObject = s;
+            updateMirror(front);
+            hideError();
+          })
+          .catch(function(err) {
+            showError('Не удалось включить камеру. Разрешите доступ к камере в настройках браузера.');
+            console.error(err);
+          });
+      }
+
+      btnSwitch.addEventListener('click', function() {
+        useFront = !useFront;
+        currentDeviceId = null;
+        startCamera(useFront);
+      });
+
+      function captureFrame() {
+        const rect = container.getBoundingClientRect();
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const vAspect = vw / vh;
+        const cAspect = rect.width / rect.height;
+        let sw, sh, sx, sy;
+        if (vAspect > cAspect) {
+          sh = vh;
+          sw = vh * cAspect;
+          sx = (vw - sw) / 2;
+          sy = 0;
+        } else {
+          sw = vw;
+          sh = vw / cAspect;
+          sx = 0;
+          sy = (vh - sh) / 2;
+        }
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        if (useFront) {
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, sx, sy, sw, sh, -rect.width, 0, rect.width, rect.height);
+          ctx.restore();
+        } else {
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
+        }
+
+        const imgW = overlay.naturalWidth || OVERLAY_BASE_W;
+        const imgH = overlay.naturalHeight || OVERLAY_BASE_H;
+        const drawW = rect.width * overlayScale;
+        const drawH = (imgH / imgW) * drawW;
+        const drawX = rect.width * overlayCenterX - drawW / 2;
+        const drawY = rect.height * overlayCenterY - drawH / 2;
+
+        ctx.drawImage(overlay, drawX, drawY, drawW, drawH);
+        return canvas.toDataURL('image/png');
+      }
+
+      btnCapture.addEventListener('click', function() {
+        if (!stream || video.readyState < 2) return;
+        lastPhotoDataUrl = captureFrame();
+        resultImg.src = lastPhotoDataUrl;
+        resultScreen.classList.add('show');
+      });
+
+      function doDownload() {
+        if (!lastPhotoDataUrl) return;
+        const a = document.createElement('a');
+        a.href = lastPhotoDataUrl;
+        a.download = 'foto-dedmoroz-' + Date.now() + '.png';
+        a.click();
+      }
+
+      btnDownloadResult.addEventListener('click', doDownload);
+
+      btnCloseResult.addEventListener('click', function() {
+        resultScreen.classList.remove('show');
+      });
+
+      overlay.addEventListener('load', function() {
+        applyOverlayStyle();
+      });
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        startCamera(true);
+      } else {
+        showError('Ваш браузер не поддерживает доступ к камере. Откройте сайт в Chrome или Safari на смартфоне.');
+      }
+
+      window.addEventListener('resize', applyOverlayStyle);
+    })();
+  </script>
+</body>
+</html>
+

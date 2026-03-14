@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Фото с Дедом Морозом — AR‑режим</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+    }
+    #container { position: fixed; inset: 0; background: transparent; }
+    #container canvas { display: block; width: 100%; height: 100%; }
+
+    .top-bar {
+      position: fixed;
+      top: env(safe-area-inset-top, 0px); left: 0; right: 0;
+      padding: 12px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 20;
+      background: linear-gradient(rgba(0,0,0,0.6), transparent);
+      pointer-events: none;
+    }
+    .top-bar > * { pointer-events: auto; }
+    .top-title { font-size: 16px; font-weight: 600; }
+    .btn-icon {
+      padding: 8px 14px; border-radius: 999px; border: none;
+      background: rgba(255,255,255,0.18); color: #fff; font-size: 14px; cursor: pointer;
+    }
+
+    #ar-overlay {
+      position: fixed;
+      bottom: env(safe-area-inset-bottom, 0px); left: 0; right: 0;
+      padding: 16px;
+      display: none; flex-direction: column; align-items: center; gap: 10px;
+      z-index: 20;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      pointer-events: none;
+    }
+    #ar-overlay.visible { display: flex; }
+    #ar-overlay > * { pointer-events: auto; }
+
+    .btn {
+      padding: 14px 22px; border-radius: 999px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-red { background: linear-gradient(135deg, #c41e3a, #f97316); color: #fff; }
+    .btn-dim { background: rgba(255,255,255,0.18); color: #fff; }
+
+    #hint {
+      font-size: 13px; text-align: center; max-width: 90%;
+      opacity: 0.9;
+    }
+
+    #start-screen {
+      position: fixed; inset: 0; z-index: 30;
+      background: radial-gradient(circle at top, #3a4fff 0, #1a1a2e 45%, #050814 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; gap: 16px; text-align: center;
+    }
+    #start-screen.gone { display: none; }
+    body.ar-active { background: transparent !important; }
+    #start-screen h1 { font-size: 22px; font-weight: 700; }
+    #start-screen p { font-size: 14px; opacity: .85; max-width: 340px; line-height: 1.5; }
+
+    #fallback {
+      position: fixed; inset: 0; z-index: 40;
+      background: radial-gradient(circle at top, #1f2937 0, #020617 55%, #000 100%);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; gap: 14px; text-align: center;
+    }
+    #fallback.show { display: flex; }
+    #fallback h2 { font-size: 20px; }
+    #fallback p { font-size: 13px; opacity: .85; max-width: 320px; line-height: 1.55; }
+    #fallback small { font-size: 11px; opacity: .5; }
+
+    #result {
+      position: fixed; inset: 0; z-index: 50;
+      background: #000;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    #result.show { display: flex; }
+    #resultImg { max-width: 100%; max-height: 80vh; object-fit: contain; }
+    #resultActions { margin-top: 16px; display: flex; gap: 12px; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <div id="container"></div>
+
+  <div id="ar-dom-overlay">
+    <div class="top-bar">
+      <button class="btn-icon" id="btnBack">← Режимы</button>
+      <div class="top-title">AR‑режим</div>
+      <button class="btn-icon" id="btnClose" style="display:none">×</button>
+    </div>
+
+    <div id="ar-overlay">
+      <p id="hint">Наведите на пол или стол — появится кольцо. Нажмите на экран, чтобы поставить стенд.</p>
+      <button class="btn btn-red" id="btnCapture" style="display:none">Сфотографировать</button>
+    </div>
+  </div>
+
+  <div id="start-screen">
+    <h1>AR‑режим</h1>
+    <p>Дед Мороз и Снегурочка появятся прямо в комнате. Ребёнок сможет встать рядом — реальные объекты будут перекрывать стенд.</p>
+    <p style="font-size:12px; opacity:.65">Работает в Chrome на Android. На iPhone используйте простой режим.</p>
+    <button class="btn btn-red" id="btnStartAR">Запустить AR</button>
+    <button class="btn btn-dim" onclick="location.href='simple.html'" style="margin-top:4px">Простой режим</button>
+    <button class="btn btn-dim" onclick="location.href='index.html'" style="opacity:.6">← На главную</button>
+  </div>
+
+  <div id="fallback">
+    <h2>AR‑режим недоступен</h2>
+    <p id="fallbackReason">Ваш браузер или устройство не поддерживают WebXR AR.</p>
+    <p>Для AR нужен <strong>Chrome на Android</strong>. На iPhone воспользуйтесь простым режимом.</p>
+    <button class="btn btn-dim" onclick="location.href='simple.html'">Перейти в простой режим</button>
+    <button class="btn btn-dim" onclick="location.href='index.html'" style="opacity:.6">← На главную</button>
+    <small id="fallbackDetail"></small>
+  </div>
+
+  <div id="result">
+    <img id="resultImg" alt="Фото">
+    <div id="resultActions">
+      <button class="btn btn-dim" id="btnAgain">Снова</button>
+      <button class="btn btn-red" id="btnDownload">Скачать</button>
+    </div>
+  </div>
+
+  <script type="module">
+  import * as THREE from 'three';
+
+  const PHOTO_URL = 'santa.png';
+  const SANTA_H = 2.0;
+
+  const container   = document.getElementById('container');
+  const startScreen = document.getElementById('start-screen');
+  const fallbackEl  = document.getElementById('fallback');
+  const fallbackR   = document.getElementById('fallbackReason');
+  const fallbackD   = document.getElementById('fallbackDetail');
+  const arOverlay   = document.getElementById('ar-overlay');
+  const hintEl      = document.getElementById('hint');
+  const btnStartAR  = document.getElementById('btnStartAR');
+  const btnBack     = document.getElementById('btnBack');
+  const btnClose    = document.getElementById('btnClose');
+  const btnCapture  = document.getElementById('btnCapture');
+  const resultEl    = document.getElementById('result');
+  const resultImg   = document.getElementById('resultImg');
+  const btnAgain    = document.getElementById('btnAgain');
+  const btnDownload = document.getElementById('btnDownload');
+
+  let camera, scene, renderer;
+  let reticle;
+  let hitTestSource = null;
+  let hitTestSourceRequested = false;
+  let santaTemplate = null;
+  let placed = false;
+  let lastPhoto = null;
+
+  function showFallback(reason, detail) {
+    startScreen.classList.add('gone');
+    if (reason) fallbackR.textContent = reason;
+    if (detail) fallbackD.textContent = detail;
+    fallbackEl.classList.add('show');
+  }
+
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 40);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5));
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.1, 0.14, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    const ctrl = renderer.xr.getController(0);
+    ctrl.addEventListener('select', onSelect);
+    scene.add(ctrl);
+
+    loadSanta();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  }
+
+  function loadSanta() {
+    new THREE.TextureLoader().load(PHOTO_URL, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const w = tex.image ? tex.image.width : 436;
+      const h = tex.image ? tex.image.height : 697;
+      const aspect = w / h;
+      const width = SANTA_H * aspect;
+      const geo = new THREE.PlaneGeometry(width, SANTA_H);
+      const mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        alphaTest: 0.05,
+        side: THREE.DoubleSide,
+        depthWrite: true,
+      });
+      santaTemplate = new THREE.Mesh(geo, mat);
+    });
+  }
+
+  function onSelect() {
+    if (!reticle.visible || !santaTemplate) return;
+    if (placed) return;
+
+    const santa = santaTemplate.clone();
+    santa.material = santaTemplate.material.clone();
+
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    reticle.matrix.decompose(pos, quat, scl);
+
+    santa.position.set(pos.x, pos.y + SANTA_H / 2, pos.z);
+
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    const angle = Math.atan2(camDir.x, camDir.z);
+    santa.rotation.y = angle + Math.PI;
+
+    scene.add(santa);
+    placed = true;
+    reticle.visible = false;
+
+    hintEl.textContent = 'Стенд поставлен! Ребёнок встаёт рядом — вы фотографируете.';
+    btnCapture.style.display = '';
+  }
+
+  async function startARSession() {
+    if (!navigator.xr) {
+      showFallback('В этом браузере нет WebXR.');
+      return;
+    }
+
+    try {
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!supported) {
+        showFallback('Ваше устройство не поддерживает WebXR AR.', 'Нужен Chrome на Android с ARCore.');
+        return;
+      }
+    } catch (e) {
+      showFallback('Ошибка проверки WebXR.', String(e));
+      return;
+    }
+
+    try {
+      const session = await navigator.xr.requestSession('immersive-ar', {
+        optionalFeatures: ['hit-test', 'dom-overlay'],
+        domOverlay: { root: document.getElementById('ar-dom-overlay') },
+      });
+
+      session.addEventListener('end', onSessionEnd);
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(session);
+
+      startScreen.classList.add('gone');
+      fallbackEl.classList.remove('show');
+      arOverlay.classList.add('visible');
+      btnClose.style.display = '';
+      document.body.classList.add('ar-active');
+      renderer.setAnimationLoop(animate);
+    } catch (e) {
+      console.error('AR session error:', e);
+      showFallback('Не удалось запустить AR.', e && e.message ? e.message : String(e));
+    }
+  }
+
+  function onSessionEnd() {
+    renderer.setAnimationLoop(null);
+    hitTestSourceRequested = false;
+    hitTestSource = null;
+    arOverlay.classList.remove('visible');
+    btnClose.style.display = 'none';
+    btnCapture.style.display = 'none';
+    placed = false;
+    document.body.classList.remove('ar-active');
+    startScreen.classList.remove('gone');
+  }
+
+  function animate(timestamp, frame) {
+    if (!frame) return;
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+    if (!refSpace || !session) return;
+
+    if (!hitTestSourceRequested) {
+      session.requestReferenceSpace('viewer').then((viewerSpace) => {
+        return session.requestHitTestSource({ space: viewerSpace });
+      }).then((src) => {
+        hitTestSource = src;
+      }).catch(console.warn);
+      hitTestSourceRequested = true;
+    }
+
+    if (hitTestSource && !placed) {
+      const results = frame.getHitTestResults(hitTestSource);
+      if (results.length > 0) {
+        const hit = results[0];
+        reticle.visible = true;
+        reticle.matrix.fromArray(hit.getPose(refSpace).transform.matrix);
+      } else {
+        reticle.visible = false;
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  function capturePhoto() {
+    try {
+      renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL('image/jpeg', 0.92);
+      lastPhoto = dataUrl;
+      resultImg.src = dataUrl;
+      resultEl.classList.add('show');
+    } catch (e) {
+      console.warn('Capture error:', e);
+      alert('Не удалось захватить кадр. Сделайте скриншот устройства.');
+    }
+  }
+
+  btnStartAR.addEventListener('click', startARSession);
+  btnBack.addEventListener('click', () => {
+    const session = renderer.xr.getSession();
+    if (session) session.end();
+    location.href = 'index.html';
+  });
+  btnClose.addEventListener('click', () => {
+    const session = renderer.xr.getSession();
+    if (session) session.end();
+  });
+  btnCapture.addEventListener('click', capturePhoto);
+  btnAgain.addEventListener('click', () => resultEl.classList.remove('show'));
+  btnDownload.addEventListener('click', () => {
+    if (!lastPhoto) return;
+    const a = document.createElement('a');
+    a.href = lastPhoto;
+    a.download = 'foto-dedmoroz-ar-' + Date.now() + '.jpg';
+    a.click();
+  });
+
+  init();
+  </script>
+</body>
+</html>
