@@ -55,6 +55,33 @@
     .mode-quicklook {
       background: linear-gradient(135deg, #0ea5e9, #06b6d4);
       box-shadow: 0 12px 36px rgba(14, 165, 233, 0.6);
+      position: relative;
+      padding-left: 72px;
+      min-height: 56px;
+    }
+    .mode-quicklook img {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .mode-quicklook::before {
+      content: "AR Quick Look";
+      font-size: 16px;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .mode-quicklook::after {
+      content: "Нативный AR от Apple: стенд в комнате. С окклюзией на устройствах с LiDAR.";
+      font-size: 13px;
+      opacity: 0.9;
+      display: block;
     }
     .badge {
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
@@ -104,15 +131,9 @@
       </button>
 
       <a rel="ar" href="santa.usdz" class="mode-btn mode-quicklook" id="quicklook-btn" style="display:none">
-        <div class="mode-title">
-          AR Quick Look
-          <span class="badge">iPhone</span>
-        </div>
-        <div class="mode-desc">
-          Нативный AR от Apple: стенд появляется в комнате через встроенный просмотрщик iOS. С окклюзией на устройствах с LiDAR.
-        </div>
-        <div class="mode-platforms">iPhone / iPad — Safari (iOS 12+)</div>
+        <img src="santa.png" alt="Дед Мороз и Снегурочка — AR">
       </a>
+      <div class="mode-platforms" id="quicklook-platforms" style="display:none; margin-top: -8px; margin-bottom: 12px; padding-left: 12px; font-size: 11px; opacity: 0.65;">iPhone / iPad — Safari (iOS 12+)</div>
 
     </section>
     <p class="footer-text">
@@ -129,6 +150,8 @@
       var supportsAR = a.relList && a.relList.supports && a.relList.supports('ar');
       if (isIOS || supportsAR) {
         document.getElementById('quicklook-btn').style.display = '';
+        var pl = document.getElementById('quicklook-platforms');
+        if (pl) pl.style.display = 'block';
       }
     })();
   </script>
