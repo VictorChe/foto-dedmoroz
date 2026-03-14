@@ -27,7 +27,9 @@ def make_stage():
     stage.SetMetadata("upAxis", "Y")
     root = UsdGeom.Xform.Define(stage, "/root")
     stage.SetDefaultPrim(root.GetPrim())
+    # Масштаб и поворот: плоскость смотрит в камеру по умолчанию (вкладки AR и Объект)
     root.AddScaleOp().Set(Gf.Vec3f(2, 2, 2))
+    root.AddRotateXYZOp().Set(Gf.Vec3f(0, 180, 0))  # 180° вокруг Y — лицевая сторона к зрителю
 
     mesh = UsdGeom.Mesh.Define(stage, "/root/Plane")
     mesh.CreatePointsAttr(POINTS)
