@@ -28,10 +28,14 @@ python3 -m http.server 8080
 
 Откройте: http://localhost:8080
 
-## Деплой
+## Деплой на Vercel
 
-**Vercel:** `vercel` из папки проекта.
-**Netlify:** перетащите папку на https://app.netlify.com/drop.
+1. Откройте ссылку (нужен аккаунт Vercel, можно войти через GitHub):
+   **https://vercel.com/new/import?repository-url=https://github.com/VictorChe/foto-dedmoroz**
+2. Нажмите **Import** → **Deploy**.
+3. Через 1–2 минуты сайт будет доступен по ссылке вида `https://foto-dedmoroz-xxx.vercel.app`. После этого каждый пуш в `main` будет автоматически выкатываться на Vercel.
+
+Через CLI: `npx vercel` из папки проекта (предварительно `npx vercel login`).
 
 ## Какой режим для какого устройства
 
