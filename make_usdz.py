@@ -64,11 +64,13 @@ def make_stage():
     texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
         st_reader.ConnectableAPI(), "result"
     )
-    # Только цвет из текстуры; opacity=1 чтобы плоскость всегда была видна (в т.ч. в превью)
+    # Прямоугольник с прозрачностью: цвет и альфа из текстуры (без овала, не обрезаем головы/ноги)
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
         texture.ConnectableAPI(), "rgb"
     )
-    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).ConnectToSource(
+        texture.ConnectableAPI(), "a"
+    )
 
     UsdShade.MaterialBindingAPI(mesh.GetPrim()).Bind(material)
     return stage
