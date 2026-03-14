@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Создаёт santa.usdz с плоскостью в правильном соотношении сторон (436x697),
-чтобы изображение не обрезалось в AR Quick Look.
+Создаёт santa.usdz для AR Quick Look (Apple).
+Требования: без сжатия (ZIP_STORED), выравнивание данных по 64 байта,
+первый файл — USDC (бинарный USD), текстура по относительному пути.
 """
 import zipfile
 from pathlib import Path
@@ -10,24 +11,18 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 IMAGE_PATH = SCRIPT_DIR / "santa.png"
-OUTPUT_USD = SCRIPT_DIR / "santa_plane.usda"
 OUTPUT_USDZ = SCRIPT_DIR / "santa.usdz"
 
-# Соотношение сторон изображения (width x height)
-IMG_W = 436
-IMG_H = 697
+IMG_W, IMG_H = 436, 697
 ASPECT = IMG_W / IMG_H
-
-# Плоскость: высота 1, ширина = aspect — картинка целиком без обрезки
 W, H = ASPECT, 1.0
 HW, HH = W / 2, H / 2
 
-# Квад в плоскости XY, центр в начале. Порядок вершин под UV (0,0)-(1,1)
 POINTS = [(-HW, -HH, 0), (-HW, HH, 0), (HW, HH, 0), (HW, -HH, 0)]
 UVS = [(0, 0), (0, 1), (1, 1), (1, 0)]
 
 
-def main():
+def make_stage():
     stage = Usd.Stage.CreateInMemory()
     stage.SetMetadata("upAxis", "Y")
     root = UsdGeom.Xform.Define(stage, "/root")
@@ -60,8 +55,7 @@ def main():
 
     texture = UsdShade.Shader.Define(stage, "/root/Material/DiffuseTexture")
     texture.CreateIdAttr("UsdUVTexture")
-    # В архиве файл будет santa.png — ссылаемся так
-    texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("santa.png"))
+    texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./santa.png"))
     texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
         st_reader.ConnectableAPI(), "result"
     )
@@ -70,15 +64,44 @@ def main():
     )
 
     UsdShade.MaterialBindingAPI(mesh.GetPrim()).Bind(material)
+    return stage
 
-    stage.Export(str(OUTPUT_USD))
 
-    # USDZ = zip: сначала корневой USD, потом ресурсы (для валидного USDZ)
-    with zipfile.ZipFile(OUTPUT_USDZ, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(OUTPUT_USD, "santa_plane.usda")
-        zf.write(IMAGE_PATH, "santa.png")
+def pad_extra_for_64_align(offset, filename_len):
+    """Размер extra, чтобы (offset + 30 + filename_len + extra) % 64 == 0."""
+    header_base = 30 + filename_len
+    need = (64 - (offset + header_base) % 64) % 64
+    return need
 
-    OUTPUT_USD.unlink()
+
+def main():
+    stage = make_stage()
+
+    # Экспорт в USDC (бинарный) — лучше поддерживается Apple
+    usdc_path = SCRIPT_DIR / "santa_plane.usdc"
+    stage.Export(str(usdc_path))
+    usdc_data = usdc_path.read_bytes()
+    usdc_path.unlink(missing_ok=True)
+
+    png_data = IMAGE_PATH.read_bytes()
+
+    # USDZ: без сжатия, выравнивание по 64 байта (требование Apple)
+    with zipfile.ZipFile(OUTPUT_USDZ, "w", zipfile.ZIP_STORED) as zf:
+        # Первый файл — корневой USD (Default Layer)
+        name1 = "santa_plane.usdc"
+        pad1 = pad_extra_for_64_align(0, len(name1))
+        zinfo1 = zipfile.ZipInfo(name1)
+        zinfo1.extra = b"\x00" * pad1
+        zf.writestr(zinfo1, usdc_data)
+
+        # Второй файл — текстура; данные должны начинаться с 64-байтной границы
+        offset_after_first = 30 + len(name1) + pad1 + len(usdc_data)
+        name2 = "santa.png"
+        pad2 = pad_extra_for_64_align(offset_after_first, len(name2))
+        zinfo2 = zipfile.ZipInfo(name2)
+        zinfo2.extra = b"\x00" * pad2
+        zf.writestr(zinfo2, png_data)
+
     print("Written:", OUTPUT_USDZ)
 
 
