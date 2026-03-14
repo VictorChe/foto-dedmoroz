@@ -75,6 +75,8 @@ def make_stage():
     shader.CreateIdAttr("UsdPreviewSurface")
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.9)
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    # Порог прозрачности: всё ниже — полностью вырезано, овал/фон без полутонов
+    shader.CreateInput("opacityThreshold", Sdf.ValueTypeNames.Float).Set(0.02)
     material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
     st_reader = UsdShade.Shader.Define(stage, "/root/Material/StReader")
