@@ -35,6 +35,10 @@ def make_stage():
     mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
     mesh.CreateExtentAttr([(-HW, -HH, 0), (HW, HH, 0)])
     mesh.CreateDoubleSidedAttr(True)
+    # Нормаль смотрит по +Z; fallback-цвет для превью, если материал не подхватится
+    mesh.CreateNormalsAttr([(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)])
+    mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
+    mesh.CreateDisplayColorAttr([(0.95, 0.95, 0.95)])
 
     primvar_api = UsdGeom.PrimvarsAPI(mesh)
     st = primvar_api.CreatePrimvar(
@@ -55,13 +59,16 @@ def make_stage():
 
     texture = UsdShade.Shader.Define(stage, "/root/Material/DiffuseTexture")
     texture.CreateIdAttr("UsdUVTexture")
-    texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./santa.png"))
+    texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("santa.png"))
+    texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
     texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
         st_reader.ConnectableAPI(), "result"
     )
+    # Только цвет из текстуры; opacity=1 чтобы плоскость всегда была видна (в т.ч. в превью)
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
         texture.ConnectableAPI(), "rgb"
     )
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
 
     UsdShade.MaterialBindingAPI(mesh.GetPrim()).Bind(material)
     return stage
@@ -77,25 +84,25 @@ def pad_extra_for_64_align(offset, filename_len):
 def main():
     stage = make_stage()
 
-    # Экспорт в USDC (бинарный) — лучше поддерживается Apple
-    usdc_path = SCRIPT_DIR / "santa_plane.usdc"
-    stage.Export(str(usdc_path))
-    usdc_data = usdc_path.read_bytes()
-    usdc_path.unlink(missing_ok=True)
+    # Корневой слой: USDA для совместимости с превью (Finder/Quick Look), Apple AR тоже принимает
+    usda_path = SCRIPT_DIR / "santa_plane.usda"
+    stage.Export(str(usda_path))
+    usda_data = usda_path.read_bytes()
+    usda_path.unlink(missing_ok=True)
 
     png_data = IMAGE_PATH.read_bytes()
 
     # USDZ: без сжатия, выравнивание по 64 байта (требование Apple)
     with zipfile.ZipFile(OUTPUT_USDZ, "w", zipfile.ZIP_STORED) as zf:
         # Первый файл — корневой USD (Default Layer)
-        name1 = "santa_plane.usdc"
+        name1 = "santa_plane.usda"
         pad1 = pad_extra_for_64_align(0, len(name1))
         zinfo1 = zipfile.ZipInfo(name1)
         zinfo1.extra = b"\x00" * pad1
-        zf.writestr(zinfo1, usdc_data)
+        zf.writestr(zinfo1, usda_data)
 
         # Второй файл — текстура; данные должны начинаться с 64-байтной границы
-        offset_after_first = 30 + len(name1) + pad1 + len(usdc_data)
+        offset_after_first = 30 + len(name1) + pad1 + len(usda_data)
         name2 = "santa.png"
         pad2 = pad_extra_for_64_align(offset_after_first, len(name2))
         zinfo2 = zipfile.ZipInfo(name2)
