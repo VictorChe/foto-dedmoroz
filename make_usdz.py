@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Создаёт santa.usdz для AR Quick Look (Apple).
-Требования: без сжатия (ZIP_STORED), выравнивание данных по 64 байта,
-первый файл — USDC (бинарный USD), текстура по относительному пути.
+- Текстура с прозрачными отступами: овал в Quick Look не обрезает шапки/ноги/посох.
+- Крупный масштаб по умолчанию для AR.
 """
+import io
 import zipfile
 from pathlib import Path
 
+from PIL import Image
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -21,14 +23,34 @@ HW, HH = W / 2, H / 2
 POINTS = [(-HW, -HH, 0), (-HW, HH, 0), (HW, HH, 0), (HW, -HH, 0)]
 UVS = [(0, 0), (0, 1), (1, 1), (1, 0)]
 
+# Масштаб в AR: крупный объект (высота ~8 условных единиц), чтобы не терялся под стулом
+AR_SCALE = 8.0
+
+# Доля площади под картинку (остальное — прозрачные поля); овал в Quick Look режет края — оставляем запас
+CONTENT_SCALE = 0.62
+
+
+def make_padded_texture():
+    """Картинка по центру с прозрачными полями по краям, чтобы овал не обрезал фигуры."""
+    src = Image.open(IMAGE_PATH).convert("RGBA")
+    w, h = IMG_W, IMG_H
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    nw, nh = int(w * CONTENT_SCALE), int(h * CONTENT_SCALE)
+    box = (max(0, (w - nw) // 2), max(0, (h - nh) // 2), (w + nw) // 2, (h + nh) // 2)
+    resized = src.resize((nw, nh), Image.Resampling.LANCZOS)
+    out.paste(resized, (box[0], box[1]), resized)
+    buf = io.BytesIO()
+    out.save(buf, format="PNG")
+    return buf.getvalue()
+
 
 def make_stage():
     stage = Usd.Stage.CreateInMemory()
     stage.SetMetadata("upAxis", "Y")
     root = UsdGeom.Xform.Define(stage, "/root")
     stage.SetDefaultPrim(root.GetPrim())
-    # Масштаб и поворот: плоскость смотрит в камеру по умолчанию (вкладки AR и Объект)
-    root.AddScaleOp().Set(Gf.Vec3f(2, 2, 2))
+    # Крупный масштаб для AR и поворот к камере
+    root.AddScaleOp().Set(Gf.Vec3f(AR_SCALE, AR_SCALE, AR_SCALE))
     root.AddRotateXYZOp().Set(Gf.Vec3f(0, 180, 0))  # 180° вокруг Y — лицевая сторона к зрителю
 
     mesh = UsdGeom.Mesh.Define(stage, "/root/Plane")
@@ -94,7 +116,7 @@ def main():
     usda_data = usda_path.read_bytes()
     usda_path.unlink(missing_ok=True)
 
-    png_data = IMAGE_PATH.read_bytes()
+    png_data = make_padded_texture()
 
     # USDZ: без сжатия, выравнивание по 64 байта (требование Apple)
     with zipfile.ZipFile(OUTPUT_USDZ, "w", zipfile.ZIP_STORED) as zf:
